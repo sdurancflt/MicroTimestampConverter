@@ -5,10 +5,10 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.confluent.csta</groupId>
-    <artifactId>kafka101</artifactId>
+    <artifactId>timestampMicro</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
-    <name>kafka101</name>
+    <name>timestampMicro</name>
     <url>http://maven.apache.org</url>
 
     <properties>
@@ -64,6 +64,19 @@
         </dependency>
 
 
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>connect-api</artifactId>
+            <version>3.7.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>connect-transforms</artifactId>
+            <version>3.7.0</version>
+        </dependency>
+
+
     </dependencies>
 
     <build>
@@ -91,7 +104,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass>io.confluent.csta.kafka101.basic.BasicProducer</mainClass>
+                            <mainClass>io.confluent.csta.timestamp.avro.AvroProducer</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

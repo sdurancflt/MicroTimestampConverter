@@ -113,7 +113,64 @@ Check that we are using for the URL host.docker.internal to point to the host fr
 
 If we check our database and look for the table customer rows we will see the entries keep only microseconds resolution.
 
+The issue is that currently TimestampConverter relies on java.util.Date and SimpleDateFormat both with resolution till milliseconds.
+
 ## Custom SMT
+
+Create a new table in postgres:
+
+```sql
+create table customers2 (first_name text, last_name text, customer_time text,
+						 customer_time_final timestamp without time zone);
+```
+
+You will also need to create a trigger:
+
+```sql
+CREATE FUNCTION time_stamp() RETURNS trigger AS $time_stamp$
+    BEGIN
+        IF NEW.customer_time IS NULL THEN
+            RAISE EXCEPTION 'customer_time cannot be null';
+        END IF;
+        NEW.customer_time_final := TO_TIMESTAMP(SUBSTRING(NEW.customer_time,1,26),'yyyy-MM-dd HH:MI:SS.US');
+        RETURN NEW;
+    END;
+$time_stamp$ LANGUAGE plpgsql;
+
+CREATE TRIGGER time_stamp BEFORE INSERT OR UPDATE ON customers2
+    FOR EACH ROW EXECUTE FUNCTION time_stamp();
+```
+
+Now let's try to use our custom SMT:
+
+```bash
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/my-sink-postgres2/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "customers",
+          "table.name.format"  : "${topic}2",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+            "transforms": "timesmod",
+            "transforms.timesmod.field": "customer_time",
+            "transforms.timesmod.target.type": "string",
+            "transforms.timesmod.type": "io.confluent.csta.timestamp.transforms.TimestampConverterMicro$Value",
+             "transforms.timesmod.format": "yyyy-MM-dd HH:mm:ss.nnnnnn",
+            "transforms.timesmod.unix.precision": "microseconds"}'
+```
+
+This way it should get populated the new table `customers2` with micro seconds resolution.
+
+This custom class is an example of an implementation leveraging java.time.Instant and DateTimeFormatter so allowing for higher resolution. But even still the target type Timestamp cannot be directy used cause it expects a java.util.Date and not java.time.Instant. And we would loose the precision beyond milliseconds if we changed our implementation to fit that. So we keep in this example the implementation as it is (although a target type as Timestamp won't work with it right now) but we leverage the string format (not applicable for SimpleDateFormat) and a trigger on database side to workaround the issue.
 
 ## Cleanup
 

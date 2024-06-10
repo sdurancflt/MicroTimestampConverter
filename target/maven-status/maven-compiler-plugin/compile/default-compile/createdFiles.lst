@@ -1,3 +1,13 @@
 io/confluent/csta/timestamp/Customer.class
-io/confluent/csta/timestamp/avro/AvroProducer.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$Config.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$Key.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$2.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$1.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$TimestampTranslator.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$5.class
 io/confluent/csta/timestamp/Customer$Builder.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$4.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$Value.class
+io/confluent/csta/timestamp/avro/AvroProducer.class
+io/confluent/csta/timestamp/transforms/TimestampConverterMicro$3.class
