@@ -172,7 +172,7 @@ This way it should get populated the new table `customers2` with micro seconds r
 
 This custom SMT class `io.confluent.csta.timestamp.transforms.TimestampConverterMicro` is an example of an implementation leveraging java.time.Instant and DateTimeFormatter so 'in principle' allowing for higher resolution. But unfortunately the target type Timestamp cannot be directy used cause Connect internally still expects in such case a java.util.Date and not java.time.Instant... and we would loose the precision beyond milliseconds if we changed this implementation to fit that anyway... So we keep in this example the implementation as it is, as an exploration example, even if a target type as Timestamp won't work with it right now.
 
- But we leverage the string format (with a value we can use here but not applicable for SimpleDateFormat used in old standard TimestampConverter) and a trigger on database side to workaround the issue.
+ But we leverage the string target type (with a format value we can use here but not applicable for SimpleDateFormat used in old standard TimestampConverter) and a trigger on database side to workaround the issue.
 
 ## Cleanup
 
