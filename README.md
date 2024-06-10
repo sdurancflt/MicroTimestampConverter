@@ -6,7 +6,8 @@
     - [Check Control Center](#check-control-center)
     - [Install JDBC Sink Connector plugin](#install-jdbc-sink-connector-plugin)
     - [Register Schema](#register-schema)
-  - [Run the Producer](#run-the-producer)
+  - [Reproduce Issue](#reproduce-issue)
+    - [Run the Producer](#run-the-producer)
     - [Sink Connector](#sink-connector)
   - [Custom SMT](#custom-smt)
   - [Cleanup](#cleanup)
@@ -66,7 +67,9 @@ curl -X POST http://localhost:8081/subjects/customers-value/versions \
 -d @-
 ```
 
-## Run the Producer
+## Reproduce Issue
+
+### Run the Producer
 
 Now let's run our producer io.confluent.csta.timestamp.avro.AvroProducer.
 
