@@ -9,7 +9,7 @@
   - [Reproduce Issue](#reproduce-issue)
     - [Run the Producer](#run-the-producer)
     - [Sink Connector](#sink-connector)
-  - [Custom SMT](#custom-smt)
+  - [Custom SMT and DB Trigger Workaround](#custom-smt-and-db-trigger-workaround)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -118,7 +118,7 @@ If we check our database and look for the table customer rows we will see the en
 
 The issue is that currently TimestampConverter relies on java.util.Date and SimpleDateFormat both with resolution till milliseconds.
 
-## Custom SMT
+## Custom SMT and DB Trigger Workaround 
 
 Create a new table in postgres:
 
