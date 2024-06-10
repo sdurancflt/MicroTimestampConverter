@@ -466,13 +466,17 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
         if (sourceTranslator == null) {
             throw new ConnectException("Unsupported timestamp type: " + timestampFormat);
         }
+        long now = System.currentTimeMillis();
+        System.out.println(now+"-timestamp: " + timestamp);
         Instant rawTimestamp = sourceTranslator.toRaw(config, timestamp);
-
+        System.out.println(now+"-rawtimestamp: " + rawTimestamp);
         TimestampTranslator targetTranslator = TRANSLATORS.get(config.type);
         if (targetTranslator == null) {
             throw new ConnectException("Unsupported timestamp type: " + config.type);
         }
-        return targetTranslator.toType(config, rawTimestamp);
+        Object converted= targetTranslator.toType(config, rawTimestamp);
+        System.out.println(now+"-convertedtimestamp: " + converted);
+        return converted;
     }
 
     private Object convertTimestamp(Object timestamp) {
