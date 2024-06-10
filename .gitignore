@@ -1,4 +1,10 @@
 .DS_Store
-.DS_Store
 
-./plugins/** 
+./plugins/**
+
+./target/**
+
+.idea
+./.idea/**
+
+

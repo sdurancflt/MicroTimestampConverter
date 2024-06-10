@@ -5,6 +5,8 @@
     - [Start Docker Compose](#start-docker-compose)
     - [Check Control Center](#check-control-center)
     - [Install JDBC Sink Connector plugin](#install-jdbc-sink-connector-plugin)
+    - [Register Schema](#register-schema)
+  - [Run the Producer](#run-the-producer)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -50,6 +52,32 @@ Now if we list our plugins we should see two new ones corresponding to the JDBC 
 ```bash
 curl localhost:8083/connector-plugins | jq
 ```
+
+### Register Schema
+
+Lets register our schema against Schema Registry:
+
+```bash
+jq '. | {schema: tojson}' src/main/resources/avro/customer.avsc | \
+curl -X POST http://localhost:8081/subjects/customers-value/versions \
+-H "Content-Type: application/vnd.schemaregistry.v1+json" \
+-d @-
+```
+
+## Run the Producer
+
+Now let's run our producer io.confluent.csta.timestamp.avro.AvroProducer.
+
+And check with consumer:
+
+```bash
+kafka-avro-console-consumer --topic customers \
+--bootstrap-server 127.0.0.1:9092 \
+--property schema.registry.url=http://127.0.0.1:8081 \
+--from-beginning
+```
+
+Just some entries should be enough so you can stop after a while.
 
 ## Cleanup
 
