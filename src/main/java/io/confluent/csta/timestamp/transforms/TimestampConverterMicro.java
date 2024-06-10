@@ -81,7 +81,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
                     ConfigDef.Importance.HIGH,
                     "The desired timestamp representation: string, unix, Date, Time, or Timestamp")
             .define(FORMAT_CONFIG, ConfigDef.Type.STRING, FORMAT_DEFAULT, ConfigDef.Importance.MEDIUM,
-                    "A SimpleDateFormat-compatible format for the timestamp. Used to generate the output when type=string "
+                    "A DateTimeFormatter-compatible format for the timestamp. Used to generate the output when type=string "
                             + "or used to parse the input if the input is a string.")
             .define(UNIX_PRECISION_CONFIG, ConfigDef.Type.STRING, UNIX_PRECISION_DEFAULT,
                     ConfigDef.ValidString.in(
@@ -89,8 +89,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
                             UNIX_PRECISION_MILLIS, UNIX_PRECISION_SECONDS),
                     ConfigDef.Importance.LOW,
                     "The desired Unix precision for the timestamp: seconds, milliseconds, microseconds, or nanoseconds. " +
-                            "Used to generate the output when type=unix or used to parse the input if the input is a Long." +
-                            "Note: This SMT will cause precision loss during conversions from, and to, values with sub-millisecond components.");
+                            "Used to generate the output when type=unix or used to parse the input if the input is a Long.");
 
     private interface TimestampTranslator {
         /**
@@ -213,7 +212,6 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
             public Instant toRaw(Config config, Object orig) {
                 if (!(orig instanceof Instant))
                     throw new DataException("Expected Time to be a java.time.Instant, but found " + orig.getClass());
-                // Already represented as a java.util.Date and Connect Times are a subset of valid java.util.Date values
                 return (Instant) orig;
             }
 
@@ -436,8 +434,6 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
      * Infer the type/format of the timestamp based on the raw Java type
      */
     private String inferTimestampType(Object timestamp) {
-        // Note that we can't infer all types, e.g. Date/Time/Timestamp all have the same runtime representation as a
-        // java.util.Date
         if (timestamp instanceof Date) {
             return TYPE_TIMESTAMP;
         } else if (timestamp instanceof Long) {
