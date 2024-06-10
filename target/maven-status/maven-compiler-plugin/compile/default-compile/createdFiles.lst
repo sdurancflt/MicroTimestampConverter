@@ -1,0 +1,3 @@
+io/confluent/csta/timestamp/Customer.class
+io/confluent/csta/timestamp/avro/AvroProducer.class
+io/confluent/csta/timestamp/Customer$Builder.class

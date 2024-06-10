@@ -12,8 +12,6 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Properties;
-import java.util.Random;
-import java.util.concurrent.TimeUnit;
 
 public class AvroProducer {
     private static final Logger log = LoggerFactory.getLogger(AvroProducer.class);
@@ -34,8 +32,6 @@ public class AvroProducer {
             running = false;
             mainThread.interrupt();
         }));
-
-        Random random = new Random();
 
         try {
             while (running) {
