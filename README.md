@@ -1,5 +1,7 @@
 # Custom Timestamp Converter SMT
 
+Currently TimestampConverter looses precision beyond milliseconds during sinking to an external database. We present here a first exploration of the problem and a possible workaround.
+
 - [Custom Timestamp Converter SMT](#custom-timestamp-converter-smt)
   - [Setup](#setup)
     - [Start Docker Compose](#start-docker-compose)
