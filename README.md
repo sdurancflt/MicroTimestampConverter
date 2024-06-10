@@ -4,8 +4,8 @@
   - [Setup](#setup)
     - [Start Docker Compose](#start-docker-compose)
     - [Install JDBC Sink Connector plugin](#install-jdbc-sink-connector-plugin)
-    - [Register Schema](#register-schema)
   - [Reproduce Issue](#reproduce-issue)
+    - [Register Schema](#register-schema)
     - [Run the Producer](#run-the-producer)
     - [Sink Connector](#sink-connector)
   - [Custom SMT and DB Trigger Workaround](#custom-smt-and-db-trigger-workaround)
@@ -51,6 +51,8 @@ Now if we list our plugins we should see two new ones corresponding to the JDBC 
 curl localhost:8083/connector-plugins | jq
 ```
 
+## Reproduce Issue
+
 ### Register Schema
 
 Lets register our schema against Schema Registry:
@@ -61,8 +63,6 @@ curl -X POST http://localhost:8081/subjects/customers-value/versions \
 -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 -d @-
 ```
-
-## Reproduce Issue
 
 ### Run the Producer
 
