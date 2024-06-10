@@ -3,7 +3,6 @@
 - [Custom Timestamp Converter SMT](#custom-timestamp-converter-smt)
   - [Setup](#setup)
     - [Start Docker Compose](#start-docker-compose)
-    - [Check Control Center](#check-control-center)
     - [Install JDBC Sink Connector plugin](#install-jdbc-sink-connector-plugin)
     - [Register Schema](#register-schema)
   - [Reproduce Issue](#reproduce-issue)
@@ -25,10 +24,6 @@ Check logs for confirming all services are running:
 ```bash
 docker compose logs -f
 ```
-
-### Check Control Center
-
-Open http://localhost:9021 and check cluster is healthy
 
 ### Install JDBC Sink Connector plugin
 
