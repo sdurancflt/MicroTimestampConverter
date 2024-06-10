@@ -19,5 +19,4 @@ target/
 
 ### PLUGINS ###
 plugins/confluent*
-plugins/mongodb*
 

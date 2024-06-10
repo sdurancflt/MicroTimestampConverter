@@ -7,6 +7,8 @@
     - [Install JDBC Sink Connector plugin](#install-jdbc-sink-connector-plugin)
     - [Register Schema](#register-schema)
   - [Run the Producer](#run-the-producer)
+    - [Sink Connector](#sink-connector)
+  - [Custom SMT](#custom-smt)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -78,6 +80,40 @@ kafka-avro-console-consumer --topic customers \
 ```
 
 Just some entries should be enough so you can stop after a while.
+
+
+### Sink Connector
+
+Now let's create our sink connector:
+
+```bash
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/my-sink-postgres/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "customers",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+            "transforms": "timesmod",
+            "transforms.timesmod.field": "customer_time",
+            "transforms.timesmod.target.type": "Timestamp",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.timesmod.unix.precision": "microseconds"}'
+```
+
+Check that we are using for the URL host.docker.internal to point to the host from inside the container.
+
+If we check our database and look for the table customer rows we will see the entries keep only microseconds resolution.
+
+## Custom SMT
 
 ## Cleanup
 
