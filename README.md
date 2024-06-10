@@ -109,9 +109,7 @@ curl -i -X PUT -H "Accept:application/json" \
             "transforms.timesmod.unix.precision": "microseconds"}'
 ```
 
-Check that we are using for the URL host.docker.internal to point to the host from inside the container.
-
-If we check our database and look for the table customer rows we will see the entries keep only microseconds resolution.
+If we check our database and look for the table customer rows we will see the entries keep only milliseconds resolution.
 
 The issue is that currently TimestampConverter relies on java.util.Date and SimpleDateFormat both with resolution till milliseconds.
 
