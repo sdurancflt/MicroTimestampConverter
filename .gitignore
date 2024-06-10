@@ -15,7 +15,8 @@ target/
 *.ipr
 
 ### VS Code ###
-.vscode/
+.vscode
+.vscode/**
 
 ### PLUGINS ###
 plugins/confluent*
