@@ -170,9 +170,7 @@ curl -i -X PUT -H "Accept:application/json" \
 
 This way it should get populated the new table `customers2` with micro seconds resolution.
 
-This custom class is an example of an implementation leveraging java.time.Instant and DateTimeFormatter so allowing for higher resolution. But even still the target type Timestamp cannot be directy used cause it expects a java.util.Date and not java.time.Instant. 
-
-(And we would loose the precision beyond milliseconds if we changed our implementation to fit that anyway. So we keep in this example the implementation as it is. Even if a target type as Timestamp won't work with it right now.)
+This custom class is an example of an implementation leveraging java.time.Instant and DateTimeFormatter so allowing for higher resolution. But even still the target type Timestamp cannot be directy used cause Connect internally still expects in such case a java.util.Date and not java.time.Instant. And we would loose the precision beyond milliseconds if we changed our implementation to fit that anyway... So we keep in this example the implementation as it is as an exploration example. Even if a target type as Timestamp won't work with it right now.
 
  But we leverage the string format (not applicable for SimpleDateForma with old standard TimestampConverter) and a trigger on database side to workaround the issue.
 
