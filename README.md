@@ -145,6 +145,8 @@ This way it should get populated the new table `customers2` with micro seconds r
 
 This custom SMT class `io.confluent.csta.timestamp.transforms.TimestampConverterMicro` is an example of an implementation leveraging java.time.Instant and java.sql.Timestamp (an implementation of java.util.Date with precision beyond milliseconds) allowing for higher resolution. 
 
+The custom SMT adds one optional configuration `timezone` on top of the original ones for parsing or formatting timestamps. Defaults to UTC. 
+
 ## Cleanup
 
 From the root of the project:
