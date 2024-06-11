@@ -29,7 +29,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
 import static org.apache.kafka.connect.transforms.util.Requirements.requireMap;
@@ -51,6 +50,9 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
     public static final String FORMAT_CONFIG = "format";
     private static final String FORMAT_DEFAULT = "";
 
+    public static final String ZONE_CONFIG = "timezone";
+    private static final String ZONE_DEFAULT = "UTC";
+
     public static final String UNIX_PRECISION_CONFIG = "unix.precision";
     private static final String UNIX_PRECISION_DEFAULT = "milliseconds";
 
@@ -66,8 +68,6 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
     private static final String UNIX_PRECISION_MICROS = "microseconds";
     private static final String UNIX_PRECISION_NANOS = "nanoseconds";
     private static final String UNIX_PRECISION_SECONDS = "seconds";
-
-    private static final TimeZone UTC = TimeZone.getTimeZone("UTC");
 
     public static final Schema OPTIONAL_DATE_SCHEMA = org.apache.kafka.connect.data.Date.builder().optional().schema();
     public static final Schema OPTIONAL_TIMESTAMP_SCHEMA = Timestamp.builder().optional().schema();
@@ -89,7 +89,9 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
                             UNIX_PRECISION_MILLIS, UNIX_PRECISION_SECONDS),
                     ConfigDef.Importance.LOW,
                     "The desired Unix precision for the timestamp: seconds, milliseconds, microseconds, or nanoseconds. " +
-                            "Used to generate the output when type=unix or used to parse the input if the input is a Long.");
+                            "Used to generate the output when type=unix or used to parse the input if the input is a Long.")
+            .define(ZONE_CONFIG, ConfigDef.Type.STRING, ZONE_DEFAULT, ConfigDef.Importance.LOW,
+                    "The time zone to use when parsing or formatting timestamps. Defaults to UTC.");
 
     private interface TimestampTranslator {
         /**
@@ -117,7 +119,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
                     throw new DataException("Expected string timestamp to be a String, but found " + orig.getClass());
                 try {
                     return java.sql.Timestamp.from(LocalDateTime.parse((String) orig,  config.format).
-                            atZone(ZoneId.systemDefault()).toInstant());
+                            atZone(ZoneId.of(ZONE_DEFAULT)).toInstant());
                 } catch (DateTimeParseException e) {
                     throw new DataException("Could not parse timestamp: value (" + orig + ") does not match pattern ("
                             + config.format.toFormat() + ")", e);
@@ -281,7 +283,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
         DateTimeFormatter format = null;
         if (!Utils.isBlank(formatPattern)) {
             try {
-                format = DateTimeFormatter.ofPattern(formatPattern).withZone(ZoneId.of("UTC"));
+                format = DateTimeFormatter.ofPattern(formatPattern).withZone(ZoneId.of(ZONE_DEFAULT));
             } catch (IllegalArgumentException e) {
                 throw new ConfigException("TimestampConverter requires a DateTimeFormatter-compatible pattern for string timestamps: "
                         + formatPattern, e);
