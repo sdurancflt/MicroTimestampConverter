@@ -130,7 +130,7 @@ CREATE FUNCTION time_stamp() RETURNS trigger AS $time_stamp$
         IF NEW.customer_time IS NULL THEN
             RAISE EXCEPTION 'customer_time cannot be null';
         END IF;
-        NEW.customer_time_final := TO_TIMESTAMP(SUBSTRING(NEW.customer_time,1,26),'yyyy-MM-dd HH:MI:SS.US');
+        NEW.customer_time_final := TO_TIMESTAMP(SUBSTRING(NEW.customer_time,1,26),'yyyy-MM-dd HH24:MI:SS.US');
         RETURN NEW;
     END;
 $time_stamp$ LANGUAGE plpgsql;
