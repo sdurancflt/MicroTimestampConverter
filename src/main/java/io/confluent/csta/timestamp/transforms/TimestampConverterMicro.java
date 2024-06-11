@@ -93,9 +93,9 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
 
     private interface TimestampTranslator {
         /**
-         * Convert from the type-specific format to the universal java.time.Instant format
+         * Convert from the type-specific format to the universal java.util.Date format
          */
-        java.sql.Timestamp toRaw(Config config, Object orig);
+        Date toRaw(Config config, Object orig);
 
         /**
          * Get the schema for this format.
@@ -103,16 +103,16 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
         Schema typeSchema(boolean isOptional);
 
         /**
-         * Convert from the universal  java.sql.Timestamp format to the type-specific format
+         * Convert from the universal java.util.Date format to the type-specific format
          */
-        Object toType(Config config,  java.sql.Timestamp orig);
+        Object toType(Config config,  Date orig);
     }
 
     private static final Map<String, TimestampTranslator> TRANSLATORS = new HashMap<>();
     static {
         TRANSLATORS.put(TYPE_STRING, new TimestampTranslator() {
             @Override
-            public java.sql.Timestamp toRaw(Config config, Object orig) {
+            public Date toRaw(Config config, Object orig) {
                 if (!(orig instanceof String))
                     throw new DataException("Expected string timestamp to be a String, but found " + orig.getClass());
                 try {
@@ -130,7 +130,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
             }
 
             @Override
-            public String toType(Config config,  java.sql.Timestamp orig) {
+            public String toType(Config config,  Date orig) {
                 synchronized (config.format) {
                     return config.format.format(orig.toInstant());
                 }
@@ -139,7 +139,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
 
         TRANSLATORS.put(TYPE_UNIX, new TimestampTranslator() {
             @Override
-            public java.sql.Timestamp toRaw(Config config, Object orig) {
+            public Date toRaw(Config config, Object orig) {
                 if (!(orig instanceof Long))
                     throw new DataException("Expected Unix timestamp to be a Long, but found " + orig.getClass());
                 Long unixTime = (Long) orig;
@@ -172,7 +172,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
             }
 
             @Override
-            public Long toType(Config config,  java.sql.Timestamp orig) {
+            public Long toType(Config config,  Date orig) {
                 Long unixTimeNano = orig.toInstant().truncatedTo(ChronoUnit.SECONDS).
                         toEpochMilli() * 1_000_000+orig.toInstant().getNano();
                 switch (config.unixPrecision) {
@@ -191,9 +191,9 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
 
         TRANSLATORS.put(TYPE_DATE, new TimestampTranslator() {
             @Override
-            public  java.sql.Timestamp toRaw(Config config, Object orig) {
-                if (!(orig instanceof java.sql.Timestamp))
-                    throw new DataException("Expected Instant to be a java.sql.Timestamp, but found " + orig.getClass());
+            public  Date toRaw(Config config, Object orig) {
+                if (!(orig instanceof Date))
+                    throw new DataException("Expected Instant to be a java.util.Date, but found " + orig.getClass());
                 // Already represented as a java.time.Instant
                 return  (java.sql.Timestamp) orig;
             }
@@ -204,17 +204,17 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
             }
 
             @Override
-            public  java.sql.Timestamp toType(Config config,  java.sql.Timestamp orig) {
+            public Date toType(Config config,  Date orig) {
                 return orig;
             }
         });
 
         TRANSLATORS.put(TYPE_TIME, new TimestampTranslator() {
             @Override
-            public  java.sql.Timestamp toRaw(Config config, Object orig) {
-                if (!(orig instanceof java.sql.Timestamp))
-                    throw new DataException("Expected Time to be a java.sql.Timestamp, but found " + orig.getClass());
-                return (java.sql.Timestamp) orig;
+            public Date toRaw(Config config, Object orig) {
+                if (!(orig instanceof Date))
+                    throw new DataException("Expected Time to be a java.util.Date, but found " + orig.getClass());
+                return (Date)orig;
             }
 
             @Override
@@ -223,17 +223,17 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
             }
 
             @Override
-            public java.sql.Timestamp toType(Config config, java.sql.Timestamp orig) {
+            public Date toType(Config config, Date orig) {
                 return orig;
             }
         });
 
         TRANSLATORS.put(TYPE_TIMESTAMP, new TimestampTranslator() {
             @Override
-            public java.sql.Timestamp toRaw(Config config, Object orig) {
-                if (!(orig instanceof java.sql.Timestamp))
-                    throw new DataException("Expected Timestamp to be a java.sql.Timestamp, but found " + orig.getClass());
-                return (java.sql.Timestamp) orig;
+            public Date toRaw(Config config, Object orig) {
+                if (!(orig instanceof Date))
+                    throw new DataException("Expected Timestamp to be a java.util.Date, but found " + orig.getClass());
+                return (Date) orig;
             }
 
             @Override
@@ -242,7 +242,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
             }
 
             @Override
-            public java.sql.Timestamp toType(Config config, java.sql.Timestamp orig) {
+            public Date toType(Config config, Date orig) {
                 return orig;
             }
         });
@@ -466,7 +466,7 @@ public abstract class TimestampConverterMicro<R extends ConnectRecord<R>> implem
         }
         long now = System.currentTimeMillis();
         System.out.println(now+"-timestamp: " + timestamp);
-        java.sql.Timestamp rawTimestamp = sourceTranslator.toRaw(config, timestamp);
+        Date rawTimestamp = sourceTranslator.toRaw(config, timestamp);
         System.out.println(now+"-rawtimestamp: " + rawTimestamp);
         TimestampTranslator targetTranslator = TRANSLATORS.get(config.type);
         if (targetTranslator == null) {
