@@ -1,6 +1,6 @@
 # Custom Timestamp Converter SMT
 
-Currently TimestampConverter looses precision beyond milliseconds during sinking to an external database. We present here a first exploration of the problem and a possible workaround.
+Currently TimestampConverter looses precision beyond milliseconds during sinking to an external database. We present here an example of implementation that allows this precision.
 
 - [Custom Timestamp Converter SMT](#custom-timestamp-converter-smt)
   - [Setup](#setup)
@@ -10,7 +10,7 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [Register Schema](#register-schema)
     - [Run the Producer](#run-the-producer)
     - [Sink Connector](#sink-connector)
-  - [Custom SMT and DB Trigger Workaround](#custom-smt-and-db-trigger-workaround)
+  - [Custom SMT](#custom-smt)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -113,37 +113,13 @@ If we check our database and look for the table customer rows we will see the en
 
 The issue is that currently TimestampConverter relies on java.util.Date and SimpleDateFormat both with resolution till milliseconds.
 
-## Custom SMT and DB Trigger Workaround 
-
-Create a new table in postgres:
-
-```sql
-create table customers2 (first_name text, last_name text, customer_time text,
-						 customer_time_final timestamp without time zone);
-```
-
-You will also need to create a trigger:
-
-```sql
-CREATE FUNCTION time_stamp() RETURNS trigger AS $time_stamp$
-    BEGIN
-        IF NEW.customer_time IS NULL THEN
-            RAISE EXCEPTION 'customer_time cannot be null';
-        END IF;
-        NEW.customer_time_final := TO_TIMESTAMP(SUBSTRING(NEW.customer_time,1,26),'yyyy-MM-dd HH24:MI:SS.US');
-        RETURN NEW;
-    END;
-$time_stamp$ LANGUAGE plpgsql;
-
-CREATE TRIGGER time_stamp BEFORE INSERT OR UPDATE ON customers2
-    FOR EACH ROW EXECUTE FUNCTION time_stamp();
-```
+## Custom SMT 
 
 Now let's try to use our custom SMT:
 
 ```bash
 curl -i -X PUT -H "Accept:application/json" \
-    -H  "Content-Type:application/json" http://localhost:8083/connectors/my-sink-postgres2/config \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/my-sink-postgres3/config \
     -d '{
           "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
           "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
@@ -160,17 +136,14 @@ curl -i -X PUT -H "Accept:application/json" \
           "value.converter"     : "io.confluent.connect.avro.AvroConverter",
             "transforms": "timesmod",
             "transforms.timesmod.field": "customer_time",
-            "transforms.timesmod.target.type": "string",
+            "transforms.timesmod.target.type": "Timestamp",
             "transforms.timesmod.type": "io.confluent.csta.timestamp.transforms.TimestampConverterMicro$Value",
-             "transforms.timesmod.format": "yyyy-MM-dd HH:mm:ss.nnnnnn",
             "transforms.timesmod.unix.precision": "microseconds"}'
 ```
 
 This way it should get populated the new table `customers2` with micro seconds resolution.
 
-This custom SMT class `io.confluent.csta.timestamp.transforms.TimestampConverterMicro` is an example of an implementation leveraging java.time.Instant and DateTimeFormatter so 'in principle' allowing for higher resolution. But unfortunately the target type Timestamp cannot be directy used cause Connect internally still expects in such case a java.util.Date and not java.time.Instant... and we would loose the precision beyond milliseconds if we changed this implementation to fit that anyway... So we keep in this example the implementation as it is, as an exploration example, even if a target type as Timestamp won't work with it right now.
-
- But we leverage the string target type (with a format value we can use here but not applicable for SimpleDateFormat used in old standard TimestampConverter) and a trigger on database side to workaround the issue.
+This custom SMT class `io.confluent.csta.timestamp.transforms.TimestampConverterMicro` is an example of an implementation leveraging java.time.Instant and java.sql.Timestamp (an implementation of java.util.Date with precision beyond milliseconds) allowing for higher resolution. 
 
 ## Cleanup
 
