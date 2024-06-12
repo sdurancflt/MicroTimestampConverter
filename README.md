@@ -1,6 +1,6 @@
 # Custom Timestamp Converter SMT
 
-Currently TimestampConverter looses precision beyond milliseconds during sinking to an external database. We present here a first exploration of the problem and a possible workaround.
+Currently TimestampConverter looses precision beyond milliseconds during sinking to an external database. We present here a first exploration of the problem and possible workarounds.
 
 - [Custom Timestamp Converter SMT](#custom-timestamp-converter-smt)
   - [Setup](#setup)
@@ -10,7 +10,8 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [Register Schema](#register-schema)
     - [Run the Producer](#run-the-producer)
     - [Sink Connector](#sink-connector)
-  - [Custom SMT](#custom-smt)
+  - [Custom SMT and DB Trigger](#custom-smt-and-db-trigger)
+  - [No Custom SMT just DB Trigger](#no-custom-smt-just-db-trigger)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -113,7 +114,7 @@ If we check our database and look for the table customer rows we will see the en
 
 The issue is that currently TimestampConverter relies on java.util.Date and SimpleDateFormat both with resolution till milliseconds.
 
-## Custom SMT 
+## Custom SMT and DB Trigger
 
 Create a new table in postgres:
 
@@ -170,7 +171,59 @@ This way it should get populated the new table `customers2` with micro seconds r
 
 This custom SMT class `io.confluent.csta.timestamp.transforms.TimestampConverterMicro` is an example of an implementation leveraging java.time.Instant and DateTimeFormatter so 'in principle' allowing for higher resolution. But unfortunately the target type Timestamp cannot be directy used cause Connect internally still expects in such case a java.util.Date and not java.time.Instant... So we keep in this example the implementation as it is, as an exploration example, even if a target type as Timestamp won't work with it right now.
 
- But we leverage the string target type (with a format value we can use here but not applicable for SimpleDateFormat used in old standard TimestampConverter) and a trigger on database side to workaround the issue.
+But we leverage the string target type (with a format value we can use here but not applicable for SimpleDateFormat used in old standard TimestampConverter) and a trigger on database side to workaround the issue.
+
+## No Custom SMT just DB Trigger
+
+Create a new table in posgres:
+
+```sql
+create table customers3 (first_name text, last_name text, customer_time bigint,
+						 customer_time_final timestamp without time zone);
+```
+
+And the corresponding trigger:
+
+```sql
+CREATE FUNCTION time_stamp3() RETURNS trigger AS $time_stamp3$
+    BEGIN
+        -- Check that empname and salary are given
+        IF NEW.customer_time IS NULL THEN
+            RAISE EXCEPTION 'customer_time cannot be null';
+        END IF;
+
+        -- Remember who changed the payroll when
+        NEW.customer_time_final := to_timestamp(NEW.customer_time::double precision/1000/1000);
+        RETURN NEW;
+    END;
+$time_stamp3$ LANGUAGE plpgsql;
+
+CREATE TRIGGER time_stamp3 BEFORE INSERT OR UPDATE ON customers3
+    FOR EACH ROW EXECUTE FUNCTION time_stamp3();
+```
+
+Now let's create the connector with no SMT:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/my-sink-postgres3/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "customers",
+          "table.name.format"  : "${topic}3",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter"}'
+```
+
+This way it should get populated the new table `customers3` with micro seconds resolution.
 
 ## Cleanup
 
