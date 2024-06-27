@@ -12,6 +12,11 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [Sink Connector](#sink-connector)
   - [Custom SMT and DB Trigger](#custom-smt-and-db-trigger)
   - [No Custom SMT just DB Trigger](#no-custom-smt-just-db-trigger)
+  - [Source JDBC Connector](#source-jdbc-connector)
+    - [Default Behabiour](#default-behabiour)
+    - [TimestampConverter SMT](#timestampconverter-smt)
+    - [Custom TimestampConverter SMT](#custom-timestampconverter-smt)
+    - [Review options](#review-options)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -224,6 +229,311 @@ curl -i -X PUT -H "Accept:application/json" \
 ```
 
 This way it should get populated the new table `customers3` with micro seconds resolution.
+
+## Source JDBC Connector
+
+### Default Behabiour
+
+Define a JDBC source connector for table customers3:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/my-source-postgres/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "customers3",
+             "mode":"bulk"}'
+```
+
+You can see the topic `postgres-customers3` getting created with schema:
+
+```json
+{
+  "connect.name": "customers3",
+  "fields": [
+    {
+      "default": null,
+      "name": "first_name",
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "default": null,
+      "name": "last_name",
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "default": null,
+      "name": "customer_time",
+      "type": [
+        "null",
+        "long"
+      ]
+    },
+    {
+      "default": null,
+      "name": "customer_time_final",
+      "type": [
+        "null",
+        {
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "connect.version": 1,
+          "logicalType": "timestamp-millis",
+          "type": "long"
+        }
+      ]
+    }
+  ],
+  "name": "customers3",
+  "type": "record"
+}
+```
+
+Also checking the messages of the topic:
+
+```json
+{
+  "first_name": {
+    "string": "QVT"
+  },
+  "last_name": {
+    "string": "ESSJG"
+  },
+  "customer_time": {
+    "long": 1719497747255043
+  },
+  "customer_time_final": {
+    "long": 1719497747255
+  }
+}
+```
+
+So the timestamp field is automatically transformed into a timestamp field with millis resolution (loosing the micros) and the original long field is kept as a long ("with full resolution").
+
+### TimestampConverter SMT
+
+Next we could try to use default timestamp converter for both fields and see what happens in each case:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/my-source2-postgres/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres3-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "customers3",
+             "mode":"bulk",
+             "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "transforms": "timesmod,timesmod2",
+            "transforms.timesmod.field": "customer_time_final",
+            "transforms.timesmod.target.type": "Timestamp",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.timesmod.unix.precision": "microseconds",
+            "transforms.timesmod2.field": "customer_time",
+            "transforms.timesmod2.target.type": "Timestamp",
+            "transforms.timesmod2.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.timesmod2.unix.precision": "microseconds"}'
+```
+
+In this case both loose the precision to microseconds. You end up with a schema as this one:
+
+```json
+{
+  "connect.name": "customers3",
+  "fields": [
+    {
+      "default": null,
+      "name": "first_name",
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "default": null,
+      "name": "last_name",
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "default": null,
+      "name": "customer_time",
+      "type": [
+        "null",
+        {
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "connect.version": 1,
+          "logicalType": "timestamp-millis",
+          "type": "long"
+        }
+      ]
+    },
+    {
+      "default": null,
+      "name": "customer_time_final",
+      "type": [
+        "null",
+        {
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "connect.version": 1,
+          "logicalType": "timestamp-millis",
+          "type": "long"
+        }
+      ]
+    }
+  ],
+  "name": "customers3",
+  "type": "record"
+}
+```
+
+And messages like this:
+
+```json
+{
+  "first_name": {
+    "string": "QVT"
+  },
+  "last_name": {
+    "string": "ESSJG"
+  },
+  "customer_time": {
+    "long": 1719497747255
+  },
+  "customer_time_final": {
+    "long": 1719497747255
+  }
+}
+```
+
+
+### Custom TimestampConverter SMT
+
+Finally we can try to test with our custom SMT.
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/my-source3-postgres/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres4-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "customers3",
+             "mode":"bulk",
+             "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "transforms": "timesmod,timesmod2",
+            "transforms.timesmod.field": "customer_time_final",
+            "transforms.timesmod.target.type": "Timestamp",
+            "transforms.timesmod.type": "io.confluent.csta.timestamp.transforms.TimestampConverterMicro$Value",
+            "transforms.timesmod.unix.precision": "microseconds",
+            "transforms.timesmod2.field": "customer_time",
+            "transforms.timesmod2.target.type": "Timestamp",
+            "transforms.timesmod2.type": "io.confluent.csta.timestamp.transforms.TimestampConverterMicro$Value",
+            "transforms.timesmod2.unix.precision": "microseconds"}'
+```
+
+Now we endup with a schema that still mentions millis as resolution:
+
+```json
+{
+  "connect.name": "customers3",
+  "fields": [
+    {
+      "default": null,
+      "name": "first_name",
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "default": null,
+      "name": "last_name",
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "default": null,
+      "name": "customer_time",
+      "type": [
+        "null",
+        {
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "connect.version": 1,
+          "logicalType": "timestamp-millis",
+          "type": "long"
+        }
+      ]
+    },
+    {
+      "default": null,
+      "name": "customer_time_final",
+      "type": [
+        "null",
+        {
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "connect.version": 1,
+          "logicalType": "timestamp-millis",
+          "type": "long"
+        }
+      ]
+    }
+  ],
+  "name": "customers3",
+  "type": "record"
+}
+```
+
+And the messages also loose micros as resolution:
+
+```json
+{
+  "first_name": {
+    "string": "QVT"
+  },
+  "last_name": {
+    "string": "ESSJG"
+  },
+  "customer_time": {
+    "long": 1719497747255
+  },
+  "customer_time_final": {
+    "long": 1719497747255
+  }
+}
+```
+
+### Review options
+
+The problem is similar than what happened to sink case (where the workaround available was to handle the timestamp with micros resolution from db side with a db trigger). One would need to keep the long field from database (containing the long value corresponding to the timestamp field) as long in kafka to keep resolution even if in kafka is not a timestamp field. Whatever later (future sink) timestamp nature for the value generated through external mechanism (db trigger).
+
+Else in both cases sink/source a customization of the jdbc connectors sink/source can be considered.
 
 ## Cleanup
 
