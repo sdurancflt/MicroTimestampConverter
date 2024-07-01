@@ -13,10 +13,9 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
   - [Custom SMT and DB Trigger](#custom-smt-and-db-trigger)
   - [No Custom SMT just DB Trigger](#no-custom-smt-just-db-trigger)
   - [Source JDBC Connector](#source-jdbc-connector)
-    - [Default Behabiour](#default-behabiour)
+    - [Default Behaviour](#default-behaviour)
     - [TimestampConverter SMT](#timestampconverter-smt)
-    - [Custom TimestampConverter SMT](#custom-timestampconverter-smt)
-    - [Review options](#review-options)
+    - [Max Value Issue](#max-value-issue)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -232,7 +231,21 @@ This way it should get populated the new table `customers3` with micro seconds r
 
 ## Source JDBC Connector
 
-### Default Behabiour
+### Default Behaviour
+
+Let's create the table:
+
+```sql
+create table customers100 (first_name text not null, last_name text not null,customer_time timestamp without time zone not null);
+```
+
+Let's insert a value on it:
+
+```sql
+INSERT INTO customers100(
+	first_name, last_name, customer_time)
+	VALUES ('rui', 'fernandes',   now());
+```
 
 Define a JDBC source connector for table customers3:
 
@@ -246,55 +259,31 @@ curl -i -X PUT -H "Accept:application/json" \
              "connection.password": "password",
              "topic.prefix": "postgres-",
              "poll.interval.ms" : 3600000,
-             "table.whitelist" : "customers3",
+             "table.whitelist" : "customers100",
+          "timestamp.granularity": "nanos_long",
              "mode":"bulk"}'
 ```
 
-You can see the topic `postgres-customers3` getting created with schema:
+You can see the topic `postgres-customers100` getting created with schema:
 
 ```json
 {
-  "connect.name": "customers3",
+  "connect.name": "customers100",
   "fields": [
     {
-      "default": null,
       "name": "first_name",
-      "type": [
-        "null",
-        "string"
-      ]
+      "type": "string"
     },
     {
-      "default": null,
       "name": "last_name",
-      "type": [
-        "null",
-        "string"
-      ]
+      "type": "string"
     },
     {
-      "default": null,
       "name": "customer_time",
-      "type": [
-        "null",
-        "long"
-      ]
-    },
-    {
-      "default": null,
-      "name": "customer_time_final",
-      "type": [
-        "null",
-        {
-          "connect.name": "org.apache.kafka.connect.data.Timestamp",
-          "connect.version": 1,
-          "logicalType": "timestamp-millis",
-          "type": "long"
-        }
-      ]
+      "type": "long"
     }
   ],
-  "name": "customers3",
+  "name": "customers100",
   "type": "record"
 }
 ```
@@ -303,26 +292,17 @@ Also checking the messages of the topic:
 
 ```json
 {
-  "first_name": {
-    "string": "QVT"
-  },
-  "last_name": {
-    "string": "ESSJG"
-  },
-  "customer_time": {
-    "long": 1719497747255043
-  },
-  "customer_time_final": {
-    "long": 1719497747255
-  }
+  "first_name": "rui",
+  "last_name": "fernandes",
+  "customer_time": "1719780510259008000"
 }
 ```
 
-So the timestamp field is automatically transformed into a timestamp field with millis resolution (loosing the micros) and the original long field is kept as a long ("with full resolution").
+Which is the original time with microseconds precision now with nanoseconds (the last 3 zeros) but it does not have the right timestamp logical type.
 
 ### TimestampConverter SMT
 
-Next we could try to use default timestamp converter for both fields and see what happens in each case:
+Next we could try to use default timestamp converter for the field and see what happens in each case:
 
 ```shell
 curl -i -X PUT -H "Accept:application/json" \
@@ -332,208 +312,193 @@ curl -i -X PUT -H "Accept:application/json" \
              "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
              "connection.user": "postgres",
              "connection.password": "password",
-             "topic.prefix": "postgres3-",
+             "topic.prefix": "postgres2-",
              "poll.interval.ms" : 3600000,
-             "table.whitelist" : "customers3",
+             "table.whitelist" : "customers100",
              "mode":"bulk",
              "value.converter.schema.registry.url": "http://schema-registry:8081",
           "value.converter.schemas.enable":"false",
           "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
           "value.converter"     : "io.confluent.connect.avro.AvroConverter",
-          "transforms": "timesmod,timesmod2",
-            "transforms.timesmod.field": "customer_time_final",
+          "timestamp.granularity": "nanos_long",
+          "transforms": "timesmod",
+            "transforms.timesmod.field": "customer_time",
             "transforms.timesmod.target.type": "Timestamp",
             "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
-            "transforms.timesmod.unix.precision": "microseconds",
-            "transforms.timesmod2.field": "customer_time",
-            "transforms.timesmod2.target.type": "Timestamp",
-            "transforms.timesmod2.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
-            "transforms.timesmod2.unix.precision": "microseconds"}'
+            "transforms.timesmod.unix.precision": "microseconds"}'
 ```
 
-In this case both loose the precision to microseconds. You end up with a schema as this one:
+In this case we end up with a following schema:
 
 ```json
 {
-  "connect.name": "customers3",
+  "connect.name": "customers100",
   "fields": [
     {
-      "default": null,
       "name": "first_name",
-      "type": [
-        "null",
-        "string"
-      ]
+      "type": "string"
     },
     {
-      "default": null,
       "name": "last_name",
-      "type": [
-        "null",
-        "string"
-      ]
+      "type": "string"
     },
     {
-      "default": null,
       "name": "customer_time",
-      "type": [
-        "null",
-        {
-          "connect.name": "org.apache.kafka.connect.data.Timestamp",
-          "connect.version": 1,
-          "logicalType": "timestamp-millis",
-          "type": "long"
-        }
-      ]
-    },
-    {
-      "default": null,
-      "name": "customer_time_final",
-      "type": [
-        "null",
-        {
-          "connect.name": "org.apache.kafka.connect.data.Timestamp",
-          "connect.version": 1,
-          "logicalType": "timestamp-millis",
-          "type": "long"
-        }
-      ]
+      "type": {
+        "connect.name": "org.apache.kafka.connect.data.Timestamp",
+        "connect.version": 1,
+        "logicalType": "timestamp-millis",
+        "type": "long"
+      }
     }
   ],
-  "name": "customers3",
+  "name": "customers100",
   "type": "record"
 }
 ```
 
-And messages like this:
+And message like this:
 
 ```json
 {
-  "first_name": {
-    "string": "QVT"
-  },
-  "last_name": {
-    "string": "ESSJG"
-  },
-  "customer_time": {
-    "long": 1719497747255
-  },
-  "customer_time_final": {
-    "long": 1719497747255
-  }
+  "first_name": "rui",
+  "last_name": "fernandes",
+  "customer_time": 1719780510259008
 }
 ```
 
+We have now microseconds resolution but schema is created with millis. We can evolve the schema to use micros resolution:
 
-### Custom TimestampConverter SMT
+```json
+{
+  "connect.name": "customers100",
+  "fields": [
+    {
+      "name": "first_name",
+      "type": "string"
+    },
+    {
+      "name": "last_name",
+      "type": "string"
+    },
+    {
+      "name": "customer_time",
+      "type": {
+        "connect.name": "org.apache.kafka.connect.data.Timestamp",
+        "connect.version": 1,
+        "logicalType": "timestamp-micros",
+        "type": "long"
+      }
+    }
+  ],
+  "name": "customers100",
+  "type": "record"
+}
+```
 
-Finally we can try to test with our custom SMT.
+And if we restart the connector we get the message still with micros as:
+
+```json
+{
+  "first_name": "rui",
+  "last_name": "fernandes",
+  "customer_time": 1719780510259008
+}
+```
+
+### Max Value Issue
+
+Let's insert a much bigger date on it:
+
+```sql
+INSERT INTO customers100(
+	first_name, last_name, customer_time)
+	VALUES ('rui', 'fernandes',    timestamp '9999-12-31 23:59:59.000000');
+```
+
+Now if we restart our connector. We get a message:
+
+```json
+{
+  "first_name": "rui",
+  "last_name": "fernandes",
+  "customer_time": "9223372036854775"
+}
+```
+
+As one can see we get now a string invalid as per our schema in comparison to what we had before which was a valid long representing the micros. The reason for that is that if we transform our date in database to long we get in milliseconds:
+
+```sql
+SELECT *,EXTRACT(EPOCH FROM customer_time)*1000 from customers100;
+```
+
+```csv
+"first_name","last_name","customer_time","?column?"
+"rui","fernandes","2024-06-30 20:48:30.259008","1719780510259.01"
+"rui","fernandes","9999-12-31 23:59:59","253402300799000"
+```
+
+Which means that for the large date we have in nanoseconds `253402300799000000000` which is above `9223372036854775807` the maximum long allowed. The connector basically brings down the possible max value in nanos to micros removing its final 3 decimals and registers the value as string `"9223372036854775"`.
+
+Curious enough for our tests we find the limit to be not exactly around the `9223372036854775807` (which would be around `Friday, 11 April 2262 23:47:16.854` if you check https://www.epochconverter.com/ for `9223372036854775807`) but a bit before for the behaviour. If we create two entries:
+
+```sql
+INSERT INTO customers100(
+	first_name, last_name, customer_time)
+	VALUES ('rui', 'fernandes',    timestamp '2255-04-11 23:47:16.853000');
+
+INSERT INTO customers100(
+	first_name, last_name, customer_time)
+	VALUES ('rui', 'fernandes',    timestamp '2256-04-11 23:47:16.855000');
+```
+
+And restart our connector.
+
+We find the first one to be transformed correctly into `9002447236853000` while the second (and any above) into a string, in this case `"9034069636855000"`. Although it still process the microseconds correctly (at least until it reaches the maximum value for long in nanoseconds as mentioned before).
+
+It's not clear to us what triggers this behaviour. Starting processing as string even before reaching the limit. In any case what we can try is to transform the value into a long after for the cases it is a string. We can do that by changing our connector with a new smt:
 
 ```shell
 curl -i -X PUT -H "Accept:application/json" \
-     -H "Content-Type: application/json" http://localhost:8083/connectors/my-source3-postgres/config \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/my-source2-postgres/config \
      -d '{
              "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
              "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
              "connection.user": "postgres",
              "connection.password": "password",
-             "topic.prefix": "postgres4-",
+             "topic.prefix": "postgres2-",
              "poll.interval.ms" : 3600000,
-             "table.whitelist" : "customers3",
+             "table.whitelist" : "customers100",
              "mode":"bulk",
              "value.converter.schema.registry.url": "http://schema-registry:8081",
           "value.converter.schemas.enable":"false",
           "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
           "value.converter"     : "io.confluent.connect.avro.AvroConverter",
-          "transforms": "timesmod,timesmod2",
-            "transforms.timesmod.field": "customer_time_final",
+          "timestamp.granularity": "nanos_long",
+          "transforms": "timesmod,tolong,timesmod2",
+            "transforms.timesmod.field": "customer_time",
             "transforms.timesmod.target.type": "Timestamp",
-            "transforms.timesmod.type": "io.confluent.csta.timestamp.transforms.TimestampConverterMicro$Value",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
             "transforms.timesmod.unix.precision": "microseconds",
+            "transforms.tolong.field": "tolong",
+            "transforms.tolong.type": "org.apache.kafka.connect.transforms.Cast$Value",
+            "transforms.tolong.spec": "customer_time:int64",
             "transforms.timesmod2.field": "customer_time",
             "transforms.timesmod2.target.type": "Timestamp",
-            "transforms.timesmod2.type": "io.confluent.csta.timestamp.transforms.TimestampConverterMicro$Value",
-            "transforms.timesmod2.unix.precision": "microseconds"}'
+            "transforms.timesmod2.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.timesmod2.unix.precision": "microseconds"
+            }'
 ```
 
-Now we endup with a schema that still mentions millis as resolution:
+With this we get for both `9002447236853` and `9034069636855` but we loose this way the micros precision. And still we can't handle the case of max value:
 
-```json
-{
-  "connect.name": "customers3",
-  "fields": [
-    {
-      "default": null,
-      "name": "first_name",
-      "type": [
-        "null",
-        "string"
-      ]
-    },
-    {
-      "default": null,
-      "name": "last_name",
-      "type": [
-        "null",
-        "string"
-      ]
-    },
-    {
-      "default": null,
-      "name": "customer_time",
-      "type": [
-        "null",
-        {
-          "connect.name": "org.apache.kafka.connect.data.Timestamp",
-          "connect.version": 1,
-          "logicalType": "timestamp-millis",
-          "type": "long"
-        }
-      ]
-    },
-    {
-      "default": null,
-      "name": "customer_time_final",
-      "type": [
-        "null",
-        {
-          "connect.name": "org.apache.kafka.connect.data.Timestamp",
-          "connect.version": 1,
-          "logicalType": "timestamp-millis",
-          "type": "long"
-        }
-      ]
-    }
-  ],
-  "name": "customers3",
-  "type": "record"
-}
+```sql 
+INSERT INTO customers100(
+	first_name, last_name, customer_time)
+	VALUES ('rui', 'fernandes',    timestamp '9999-12-31 23:59:59.000000');
 ```
 
-And the messages also loose micros as resolution:
-
-```json
-{
-  "first_name": {
-    "string": "QVT"
-  },
-  "last_name": {
-    "string": "ESSJG"
-  },
-  "customer_time": {
-    "long": 1719497747255
-  },
-  "customer_time_final": {
-    "long": 1719497747255
-  }
-}
-```
-
-### Review options
-
-The problem is similar than what happened to sink case (where the workaround available was to handle the timestamp with micros resolution from db side with a db trigger). One would need to keep the long field from database (containing the long value corresponding to the timestamp field) as long in kafka to keep resolution even if in kafka is not a timestamp field. Whatever later (future sink) timestamp nature for the value generated through external mechanism (db trigger).
-
-Else in both cases sink/source a customization of the jdbc connectors sink/source can be considered.
+Which will be reduced to `Friday, 11 April 2262 23:47:16.854`.
 
 ## Cleanup
 
