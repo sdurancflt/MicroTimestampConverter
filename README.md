@@ -16,6 +16,7 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [Default Behaviour](#default-behaviour)
     - [TimestampConverter SMT](#timestampconverter-smt)
     - [Max Value Issue](#max-value-issue)
+    - [Custom SMT](#custom-smt)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -490,15 +491,90 @@ curl -i -X PUT -H "Accept:application/json" \
             }'
 ```
 
-With this we get for both `9002447236853` and `9034069636855` but we loose this way the micros precision. And still we can't handle the case of max value:
+With this we get for both `9002447236853` and `9034069636855` but we loose this way the micros precision. And still we can't handle the case of max value `9999-12-31 23:59:59.000000` which will be reduced to `Friday, 11 April 2262 23:47:16.854`.
 
-```sql 
-INSERT INTO customers100(
-	first_name, last_name, customer_time)
-	VALUES ('rui', 'fernandes',    timestamp '9999-12-31 23:59:59.000000');
+### Custom SMT
+
+We have built a custom SMT `io.confluent.csta.timestamp.transforms.InsertMaxDate` that basically checks for dates in the field specified (in our case this will be `customer_time`) for values corresponding to the "nano long max" up to milliseconds (check discussion before) `9223372036854` and replace for those cases by the value `253402300799000` corresponding to our desired max `9999-12-31 23:59:59.000000` up to milliseconds.
+
+Let's try to use a custom SMT.
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/my-source3-postgres/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres3-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "customers100",
+             "mode":"bulk",
+             "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "timestamp.granularity": "nanos_long",
+          "transforms": "timesmod,tolong,timesmod2,setmax",
+            "transforms.timesmod.field": "customer_time",
+            "transforms.timesmod.target.type": "Timestamp",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.timesmod.unix.precision": "microseconds",
+            "transforms.tolong.field": "tolong",
+            "transforms.tolong.type": "org.apache.kafka.connect.transforms.Cast$Value",
+            "transforms.tolong.spec": "customer_time:int64",
+            "transforms.timesmod2.field": "customer_time",
+            "transforms.timesmod2.target.type": "Timestamp",
+            "transforms.timesmod2.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.timesmod2.unix.precision": "microseconds",
+            "transforms.setmax.field.name": "customer_time",
+            "transforms.setmax.type": "io.confluent.csta.timestamp.transforms.InsertMaxDate$Value"
+            }'
 ```
 
-Which will be reduced to `Friday, 11 April 2262 23:47:16.854`.
+We get now what we were looking for the max value (in millis):
+
+```json
+{
+  "first_name": "rui",
+  "last_name": "fernandes",
+  "customer_time": 253402300799000
+}
+```
+
+Let's try now to sink this back into the database:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/my-sink-postgres100/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "postgres3-customers100",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+            "transforms": "timesmod",
+            "transforms.timesmod.field": "customer_time",
+            "transforms.timesmod.target.type": "Timestamp",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.timesmod.unix.precision": "microseconds"}'
+```
+
+If we check the database:
+
+```sql
+select * from "postgres3-customers100";
+```
+
+We see we are able to keep the results as they were although we lost the micros resolution.
 
 ## Cleanup
 
