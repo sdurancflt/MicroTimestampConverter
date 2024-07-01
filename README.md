@@ -441,7 +441,7 @@ SELECT *,EXTRACT(EPOCH FROM customer_time)*1000 from customers100;
 
 Which means that for the large date we have in nanoseconds `253402300799000000000` which is above `9223372036854775807` the maximum long allowed. The connector basically brings down the possible max value in nanos to micros removing its final 3 decimals and registers the value as string `"9223372036854775"`.
 
-Curious enough for our tests we find the limit to be not exactly around the `9223372036854775807` (which would be around `Friday, 11 April 2262 23:47:16.854` if you check https://www.epochconverter.com/ for `9223372036854775807`) but a bit before for the behaviour. If we create two entries:
+Curious enough for our tests we find the limit to be not exactly around the `9223372036854775807` (which would be around `Friday, 11 April 2262 23:47:16.854` if you check https://www.epochconverter.com/ for `9223372036854775807`) but a bit before for the "change to string" behaviour. If we create two entries:
 
 ```sql
 INSERT INTO customers100(
@@ -455,9 +455,9 @@ INSERT INTO customers100(
 
 And restart our connector.
 
-We find the first one to be transformed correctly into `9002447236853000` while the second (and any above) into a string, in this case `"9034069636855000"`. Although it still process the microseconds correctly (at least until it reaches the maximum value for long in nanoseconds as mentioned before).
+We find the first one to be transformed correctly into `9002447236853000` while the second (and any above) into a string, in this case `"9034069636855000"`. Although it still process the microseconds correctly (at least until it reaches the maximum value for long in nanoseconds as mentioned before when it can process any further).
 
-It's not clear to us what triggers this behaviour. Starting processing as string even before reaching the limit. In any case what we can try is to transform the value into a long after for the cases it is a string. We can do that by changing our connector with a new smt:
+It's not clear to us what triggers this behaviour: starting processing as string even before reaching the limit. In any case what we can try is to transform the value into a long after for the cases it is a string. We can do that by changing our connector with smt chain:
 
 ```shell
 curl -i -X PUT -H "Accept:application/json" \
@@ -491,13 +491,13 @@ curl -i -X PUT -H "Accept:application/json" \
             }'
 ```
 
-With this we get for both `9002447236853` and `9034069636855` but we loose this way the micros precision. And still we can't handle the case of max value `9999-12-31 23:59:59.000000` which will be reduced to `Friday, 11 April 2262 23:47:16.854`.
+With this we get for both `9002447236853` and `9034069636855` but we lost this way the micros precision. And still we can't handle the case of max value `9999-12-31 23:59:59.000000` which will be capped to `Friday, 11 April 2262 23:47:16.854`.
 
 ### Custom SMT
 
 We have built a custom SMT `io.confluent.csta.timestamp.transforms.InsertMaxDate` that basically checks for dates in the field specified (in our case this will be `customer_time`) for values corresponding to the "nano long max" up to milliseconds (check discussion before) `9223372036854` and replace for those cases by the value `253402300799000` corresponding to our desired max `9999-12-31 23:59:59.000000` up to milliseconds.
 
-Let's try to use a custom SMT.
+Let's try to use our custom SMT after the same SMT chain before.
 
 ```shell
 curl -i -X PUT -H "Accept:application/json" \
@@ -533,7 +533,7 @@ curl -i -X PUT -H "Accept:application/json" \
             }'
 ```
 
-We get now what we were looking for the max value (in millis):
+We get now what we were looking for the max value (up to millis):
 
 ```json
 {
