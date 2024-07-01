@@ -491,11 +491,11 @@ curl -i -X PUT -H "Accept:application/json" \
             }'
 ```
 
-With this we get for both `9002447236853` and `9034069636855` but we lost this way the micros precision. And still we can't handle the case of max value `9999-12-31 23:59:59.000000` which will be capped to `Friday, 11 April 2262 23:47:16.854`.
+With this we get for both `9002447236853` and `9034069636855`. But we still we can't handle the case of max value `9999-12-31 23:59:59.000000` which will be capped to `Friday, 11 April 2262 23:47:16.854`.
 
 ### Custom SMT
 
-We have built a custom SMT `io.confluent.csta.timestamp.transforms.InsertMaxDate` that basically checks for dates in the field specified (in our case this will be `customer_time`) for values corresponding to the "nano long max" up to milliseconds (check discussion before) `9223372036854` and replace for those cases by the value `253402300799000` corresponding to our desired max `9999-12-31 23:59:59.000000` up to milliseconds.
+We have built a custom SMT `io.confluent.csta.timestamp.transforms.InsertMaxDate` that basically checks for dates in the field specified (in our case this will be `customer_time`) for values corresponding to the "nano long max" up to milliseconds (check discussion before) `9223372036854` and replace for those cases by the value `253402300799000` corresponding to our desired max `9999-12-31 23:59:59.000000` in milliseconds.
 
 Let's try to use our custom SMT after the same SMT chain before.
 
@@ -533,7 +533,7 @@ curl -i -X PUT -H "Accept:application/json" \
             }'
 ```
 
-We get now what we were looking for the max value (up to millis):
+We get now what we were looking for the max value (in millis):
 
 ```json
 {
@@ -574,7 +574,7 @@ If we check the database:
 select * from "postgres3-customers100";
 ```
 
-We see we are able to keep the results as they were although we lost the micros resolution.
+We see we are able to keep the results as they were although we lost the micros resolution cause of the sink issue first discussed here.
 
 ## Cleanup
 
