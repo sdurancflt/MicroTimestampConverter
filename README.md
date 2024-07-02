@@ -533,7 +533,7 @@ curl -i -X PUT -H "Accept:application/json" \
             }'
 ```
 
-We get now what we were looking for the max value (in millis):
+We get now what we were looking for the max value (in micros):
 
 ```json
 {
