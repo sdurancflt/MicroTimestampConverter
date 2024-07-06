@@ -17,6 +17,10 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [TimestampConverter SMT](#timestampconverter-smt)
     - [Max Value Issue](#max-value-issue)
     - [Custom SMT](#custom-smt)
+  - [With Date](#with-date)
+    - [Source JDBC](#source-jdbc)
+    - [Sink after](#sink-after)
+    - [Sorting java.time and java,util discrepancy before sinking with custom SMT](#sorting-javatime-and-javautil-discrepancy-before-sinking-with-custom-smt)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -575,6 +579,196 @@ select * from "postgres3-customers100";
 ```
 
 We see we are able to keep the results as they were although we lost the micros resolution cause of the sink issue first discussed here.
+
+## With Date 
+
+### Source JDBC
+
+Let's create a table in postgres:
+
+```sql
+create table with_date (name text not null, my_date DATE not null);
+```
+
+After we insert a row:
+
+```sql
+INSERT INTO with_date (name,my_date) VALUES ('Rui','0001-01-01');
+```
+
+Now we create a source jdbc connector:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/with-date/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "with_date",
+             "mode":"bulk",
+             "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "transforms": "timesmod",
+            "transforms.timesmod.field": "my_date",
+            "transforms.timesmod.target.type": "Date",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value"}'
+```
+
+You get in the topic:
+
+```json
+{
+  "name": "Rui",
+  "my_date": -719164
+}
+```
+
+Which you can check https://www.epochconverter.com/seconds-days-since-y0 and see that corresponds in fact to date `Saturday, 30 December 0000` representing what it seems to be 2 days before our original date in database `'0001-01-01'`.
+
+We can check the schema and we get:
+
+```json
+{
+  "connect.name": "with_date",
+  "fields": [
+    {
+      "name": "name",
+      "type": "string"
+    },
+    {
+      "name": "my_date",
+      "type": {
+        "connect.name": "org.apache.kafka.connect.data.Date",
+        "connect.version": 1,
+        "logicalType": "date",
+        "type": "int"
+      }
+    }
+  ],
+  "name": "with_date",
+  "type": "record"
+}
+```
+
+### Sink after
+
+Now we create a connector to sink to database:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/with-date-sink/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "postgres-with_date",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+            "transforms": "timesmod",
+            "transforms.timesmod.field": "my_date",
+            "transforms.timesmod.target.type": "Date",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value"}'
+```
+
+If we execute:
+
+```sql
+select * from "postgres-with_date";
+```
+
+We see we get in fact same date `'0001-01-01'`.
+
+Everything is coherent aside that check we did on https://www.epochconverter.com/seconds-days-since-y0 for the value stored in the topic.
+
+If we run our class `io.confluent.csta.timestamp.transforms.TestDate` we can see for java.util package classes the representation in days for `'0001-01-01'` is in fact `-719164`. So there is no subtraction really occurring.
+
+But if we run our class `io.confluent.csta.timestamp.transforms.TestDate2` we can see for java.time classes the representation in days for `'0001-01-01'` is in fact `-719162`. Basically the web page is using an implementation like java.time classes so the values differ. But the implementation of Kafka is coherent in itself.
+
+The root cause related to differences for dates before the transition from Julian to Gregorian calendar between java.util and java.time packages implementation.
+
+### Sorting java.time and java,util discrepancy before sinking with custom SMT
+
+We reproduce the issue arising from a producer using `java.time` representation as `-719162` for `'0001-01-01'` by inserting a date on our database like `'0000-12-30'` (we will suppose it came from a producer/CDC using `java.time` conversion for the date `'0001-01-01'`):
+
+```sql
+create table with_date2 (name text not null, my_date DATE not null);
+INSERT INTO with_date2 (name,my_date) VALUES ('Rui', '0001-01-03');
+```
+
+If we now create a connector:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/with-date3/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres3-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "with_date2",
+             "mode":"bulk",
+             "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "transforms": "timesmod",
+            "transforms.timesmod.field": "my_date",
+            "transforms.timesmod.target.type": "Date",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value"}'
+```
+
+We get in the topic as we wanted to reproduce:
+
+```json
+{
+  "name": "Rui",
+  "my_date": -719162
+}
+```
+
+We can then use a sink connector with our custom SMT `io.confluent.csta.timestamp.transforms.DecrementTwoDays` for correcting the discrepancy:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/with-date-sink2/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "postgres3-with_date2",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+            "transforms": "timesmod,correctDays",
+            "transforms.timesmod.field": "my_date",
+            "transforms.timesmod.target.type": "Date",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.correctDays.field.name": "my_date",
+            "transforms.correctDays.type": "io.confluent.csta.timestamp.transforms.DecrementTwoDays$Value"}'
+```
+
+And now we get on database the value `0001-01-01`. 
+
+Basically the custom SMT specifically checks (for the field specified) for values `0001-01-03` (from kafka java.util point of view) and transforms into `0001-01-01` (from kafka java.util point of view). So that when it sinks to database we get the expected value from source `0001-01-01`.
 
 ## Cleanup
 
