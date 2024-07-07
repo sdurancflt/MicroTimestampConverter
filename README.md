@@ -772,7 +772,7 @@ And now we get on database the value `0001-01-01`.
 
 Basically the custom SMT specifically checks (for the field specified) for values `0001-01-03` (from kafka java.util point of view) and transforms into `0001-01-01` (from kafka java.util point of view). So that when it sinks to database we get the expected value from source `0001-01-01`. 
 
-**Note: This SMT class is meant to serve as an example that can be adapted to your specific needs in relation to this issue.**
+**Note: This SMT class is meant to serve as an example that you can adapt to your specific needs in relation to this issue.**
 
 ## Cleanup
 
