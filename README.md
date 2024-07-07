@@ -702,7 +702,7 @@ Next we present a workaround to this problem meanwhile the JDBC connector still 
 
 ### Sorting java.time and java.util discrepancy before sinking with custom SMT
 
-We reproduce the issue arising from a producer using `java.time` representation as `-719162` for `'0001-01-01'` by inserting a date on our database like `'0000-12-30'` (we will suppose it came from a producer/CDC using `java.time` conversion for the date `'0001-01-01'`):
+We reproduce the issue arising from a producer using `java.time` representation as `-719162` for `'0001-01-01'` by inserting a date on our database like `'0000-12-30'`. We will suppose it came from a producer/CDC using `java.time` conversion for the date `'0001-01-01'`. The objective here is just trying to reproduce a topic with messages equivalent to what would happen in such scenario.
 
 ```sql
 create table with_date2 (name text not null, my_date DATE not null);
