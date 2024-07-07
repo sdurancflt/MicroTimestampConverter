@@ -20,7 +20,7 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
   - [With Date](#with-date)
     - [Source JDBC](#source-jdbc)
     - [Sink after](#sink-after)
-    - [Sorting java.time and java,util discrepancy before sinking with custom SMT](#sorting-javatime-and-javautil-discrepancy-before-sinking-with-custom-smt)
+    - [Sorting java.time and java.util discrepancy before sinking with custom SMT](#sorting-javatime-and-javautil-discrepancy-before-sinking-with-custom-smt)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -698,7 +698,7 @@ But if we run our class `io.confluent.csta.timestamp.transforms.TestDate2` we ca
 
 The root cause related to differences for dates before the transition from Julian to Gregorian calendar between java.util and java.time packages implementation.
 
-### Sorting java.time and java,util discrepancy before sinking with custom SMT
+### Sorting java.time and java.util discrepancy before sinking with custom SMT
 
 We reproduce the issue arising from a producer using `java.time` representation as `-719162` for `'0001-01-01'` by inserting a date on our database like `'0000-12-30'` (we will suppose it came from a producer/CDC using `java.time` conversion for the date `'0001-01-01'`):
 
