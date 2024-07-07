@@ -754,7 +754,7 @@ While for the second entry we get an unproblematic representation (equal in `jav
 }
 ```
 
-We can then use a sink connector with our custom SMT `src/main/java/io/confluent/csta/timestamp/transforms/CorrectTimeUtilDiscrepancy.java` for correcting the discrepancy:
+We can then use a sink connector with our custom SMT `io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy` for correcting the discrepancy:
 
 ```shell
 curl -i -X PUT -H "Accept:application/json" \
