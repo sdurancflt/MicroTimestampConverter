@@ -698,7 +698,7 @@ The root cause of the discrepancy related to differences for dates before the tr
 
 The issue will of course appear if the producer to the topic is not our connector but some other implementation `java.time` like... This would send to the topic `-719162` which from the point of view of Kafka would be `'0001-01-03'` (`java.util` based), and if we sink with JDBC connector after that's what it will write on database. 
 
-Next we present a workaround to this problem meanwhile the JDBC connector still uses a `java.util` based implementation (**and if it's not possible for you to adapt your producer/CDC to use also those package classes when writing to Kafka**).
+Next we present a workaround to this problem meanwhile the JDBC connector still uses a `java.util` based implementation (**and if it's not possible for you to adapt your producer/CDC to use also those `java.util` package classes when writing to Kafka**).
 
 ### Sorting java.time and java.util discrepancy before sinking with custom SMT
 
