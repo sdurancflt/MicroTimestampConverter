@@ -692,11 +692,13 @@ We see we get in fact same date `'0001-01-01'`.
 
 Everything is coherent aside that check we did on https://www.epochconverter.com/seconds-days-since-y0 for the value stored in the topic.
 
-If we run our class `io.confluent.csta.timestamp.transforms.DaysBeforeEpochComparison` we can see for java.util package classes the representation in days for `'0001-01-01'` is in fact `-719164` while for `java.time` is in fact `-719162`. Basically the web page is using an implementation like java.time classes so the values differ. But the implementation of Kafka is coherent in itself. Meaning, once sourced it will sink the right value after.
+If we run our class `io.confluent.csta.timestamp.transforms.DaysBeforeEpochComparison` we can see for java.util package classes the representation in days for `'0001-01-01'` is in fact `-719164` while for `java.time` is in fact `-719162`. (This discrepancy doesn't for modern dates as the test class shows.) Basically the web page is using an implementation like java.time classes so the values differ. But the implementation of Kafka is coherent in itself. Meaning, once sourced it will sink the right value after.
 
-The root cause of the discrepancy related to differences for dates before the transition from Julian to Gregorian calendar between java.util and java.time packages implementation.
+The root cause of the discrepancy related to differences for dates before the transition from Julian to Gregorian calendar between `java.util` and `java.time` packages implementation.
 
-The issue will of course appear if the producer to the topic is not our connector but some other implementation `java.time` like... The would send to the topic `-719162` which from the point of view of Kafka would be `'0001-01-03'` (`java.util` based), and if we sink with JDBC connector after that's what it will write on database. Next we present a workaround to this problem meanwhile the JDBC connector still uses `java.util` based implementation (**and if it's not possible for you to adapt your producer/CDC to use also those package classes when writing to Kafka**).
+The issue will of course appear if the producer to the topic is not our connector but some other implementation `java.time` like... This would send to the topic `-719162` which from the point of view of Kafka would be `'0001-01-03'` (`java.util` based), and if we sink with JDBC connector after that's what it will write on database. 
+
+Next we present a workaround to this problem meanwhile the JDBC connector still uses a `java.util` based implementation (**and if it's not possible for you to adapt your producer/CDC to use also those package classes when writing to Kafka**).
 
 ### Sorting java.time and java.util discrepancy before sinking with custom SMT
 
