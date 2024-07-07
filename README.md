@@ -736,7 +736,7 @@ curl -i -X PUT -H "Accept:application/json" \
             "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value"}'
 ```
 
-We get for the message in the topic as we wanted to reproduce:
+We get the problematic message in the topic we wanted to reproduce:
 
 ```json
 {
@@ -745,7 +745,7 @@ We get for the message in the topic as we wanted to reproduce:
 }
 ```
 
-While for the second entry we get the unproblematic representation (equal in `java.util` and `java.time`):
+While for the second entry we get an unproblematic representation (equal in `java.util` and `java.time`):
 
 ```json
 {
