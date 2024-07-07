@@ -698,7 +698,7 @@ But if we run our class `io.confluent.csta.timestamp.transforms.TestDate2` we ca
 
 The root cause related to differences for dates before the transition from Julian to Gregorian calendar between java.util and java.time packages implementation.
 
-The issue will of course appear if the producer to the topic is not our connector but some other implementation `java.time` like...
+The issue will of course appear if the producer to the topic is not our connector but some other implementation `java.time` like... The would send to the topic `-719162` which from the point of view of Kafka would be `'0001-01-03'` (`java.util` based), and if we sink with JDBC connector after that's what it will write on database. Next we present a workaround to this problem meanwhile the JDBC connector still uses `java.util` (and if it's not possible for you to adapt your producer/CDC to use also those package classes when writing to Kafka).
 
 ### Sorting java.time and java.util discrepancy before sinking with custom SMT
 
@@ -770,7 +770,9 @@ curl -i -X PUT -H "Accept:application/json" \
 
 And now we get on database the value `0001-01-01`. 
 
-Basically the custom SMT specifically checks (for the field specified) for values `0001-01-03` (from kafka java.util point of view) and transforms into `0001-01-01` (from kafka java.util point of view). So that when it sinks to database we get the expected value from source `0001-01-01`.
+Basically the custom SMT specifically checks (for the field specified) for values `0001-01-03` (from kafka java.util point of view) and transforms into `0001-01-01` (from kafka java.util point of view). So that when it sinks to database we get the expected value from source `0001-01-01`. 
+
+**Note: This SMT class is meant to serve as an example that can be adapted to your specific needs in relation to this issue.**
 
 ## Cleanup
 
