@@ -6,17 +6,15 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
   - [Setup](#setup)
     - [Start Docker Compose](#start-docker-compose)
     - [Install JDBC Sink Connector plugin](#install-jdbc-sink-connector-plugin)
-  - [Reproduce Issue](#reproduce-issue)
-    - [Register Schema](#register-schema)
-    - [Run the Producer](#run-the-producer)
-    - [Sink Connector](#sink-connector)
-  - [Custom SMT and DB Trigger](#custom-smt-and-db-trigger)
-  - [No Custom SMT just DB Trigger](#no-custom-smt-just-db-trigger)
+  - [Microseconds Precision Loss](#microseconds-precision-loss)
+    - [Reproduce the issue](#reproduce-the-issue)
+    - [Custom SMT and DB Trigger](#custom-smt-and-db-trigger)
+    - [No Custom SMT just DB Trigger Workaround](#no-custom-smt-just-db-trigger-workaround)
   - [Source JDBC Connector](#source-jdbc-connector)
     - [Default Behaviour](#default-behaviour)
     - [TimestampConverter SMT](#timestampconverter-smt)
-    - [Max Value Issue](#max-value-issue)
-    - [Custom SMT](#custom-smt)
+    - [Large Values Issue](#large-values-issue)
+    - [SMT Chain with Custom SMT Workaround](#smt-chain-with-custom-smt-workaround)
   - [With Date](#with-date)
     - [Source JDBC](#source-jdbc)
     - [Sink after](#sink-after)
@@ -63,9 +61,9 @@ Now if we list our plugins we should see two new ones corresponding to the JDBC 
 curl localhost:8083/connector-plugins | jq
 ```
 
-## Reproduce Issue
+## Microseconds Precision Loss
 
-### Register Schema
+### Reproduce the issue
 
 Lets register our schema against Schema Registry:
 
@@ -75,8 +73,6 @@ curl -X POST http://localhost:8081/subjects/customers-value/versions \
 -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 -d @-
 ```
-
-### Run the Producer
 
 Now let's run our producer io.confluent.csta.timestamp.avro.AvroProducer.
 
@@ -90,9 +86,6 @@ kafka-avro-console-consumer --topic customers \
 ```
 
 Just some entries should be enough so you can stop after a while.
-
-
-### Sink Connector
 
 Now let's create our sink connector:
 
@@ -123,7 +116,7 @@ If we check our database and look for the table customer rows we will see the en
 
 The issue is that currently TimestampConverter relies on java.util.Date and SimpleDateFormat both with resolution till milliseconds.
 
-## Custom SMT and DB Trigger
+### Custom SMT and DB Trigger
 
 Create a new table in postgres:
 
@@ -182,7 +175,7 @@ This custom SMT class `io.confluent.csta.timestamp.transforms.TimestampConverter
 
 But we leverage the string target type (with a format value we can use here but not applicable for SimpleDateFormat used in old standard TimestampConverter) and a trigger on database side to workaround the issue.
 
-## No Custom SMT just DB Trigger
+### No Custom SMT just DB Trigger Workaround
 
 Create a new table in posgres:
 
@@ -234,7 +227,7 @@ curl -i -X PUT -H "Accept:application/json" \
 
 This way it should get populated the new table `customers3` with micro seconds resolution.
 
-## Source JDBC Connector
+## Source JDBC Connector 
 
 ### Default Behaviour
 
@@ -333,7 +326,7 @@ curl -i -X PUT -H "Accept:application/json" \
             "transforms.timesmod.unix.precision": "microseconds"}'
 ```
 
-In this case we end up with a following schema:
+In this case we end up with the following schema:
 
 ```json
 {
@@ -411,7 +404,7 @@ And if we restart the connector we get the message still with micros as:
 }
 ```
 
-### Max Value Issue
+### Large Values Issue
 
 Let's insert a much bigger date on it:
 
@@ -495,9 +488,9 @@ curl -i -X PUT -H "Accept:application/json" \
             }'
 ```
 
-With this we get for both `9002447236853` and `9034069636855`. But we still we can't handle the case of max value `9999-12-31 23:59:59.000000` which will be capped to `Friday, 11 April 2262 23:47:16.854`.
+With this we get for both `9002447236853` and `9034069636855`. But we still can't handle the case of max value `9999-12-31 23:59:59.000000` which will be capped to `Friday, 11 April 2262 23:47:16.854`.
 
-### Custom SMT
+### SMT Chain with Custom SMT Workaround
 
 We have built a custom SMT `io.confluent.csta.timestamp.transforms.InsertMaxDate` that basically checks for dates in the field specified (in our case this will be `customer_time`) for values corresponding to the "nano long max" up to milliseconds (check discussion before) `9223372036854` and replace for those cases by the value `253402300799000` corresponding to our desired max `9999-12-31 23:59:59.000000` in milliseconds.
 
