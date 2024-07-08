@@ -104,16 +104,6 @@ public abstract class CorrectTimeUtilDiscrepancy<R extends ConnectRecord<R>> imp
         return possiblyProblematic && value instanceof Date && ((Date)value).equals(problematicDateValue);
     }
 
-    private static long getDays(Date date) {
-        Calendar epochCalendar = Calendar.getInstance();
-        epochCalendar.setTimeInMillis(0);
-        Calendar dateCalendar = Calendar.getInstance();
-        dateCalendar.setTime(date);
-        long differenceInMillis = dateCalendar.getTimeInMillis() - epochCalendar.getTimeInMillis();
-        long days = differenceInMillis / (1000 * 60 * 60 * 24);
-        return days;
-    }
-
 
     private R applyWithSchema(R record) {
         final Struct value = requireStruct(operatingValue(record), PURPOSE);
