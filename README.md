@@ -19,6 +19,7 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [Source JDBC](#source-jdbc)
     - [Sink after](#sink-after)
     - [Sorting java.time and java.util discrepancy before sinking with custom SMT](#sorting-javatime-and-javautil-discrepancy-before-sinking-with-custom-smt)
+    - [Tombstone](#tombstone)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -774,11 +775,149 @@ curl -i -X PUT -H "Accept:application/json" \
             "transforms.correctDays.type": "io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy$Value"}'
 ```
 
-And now we get on database the value `0001-01-01` for the first message while for the second the value is unproblematic and stays unchanged as `2024-07-07`.
+If we execute:
+
+```sql
+select * from "postgres3-with_date2";
+```
+
+Now we get on database the value `0001-01-01` for the first message while for the second the value is unproblematic and stays unchanged as `2024-07-07`.
 
 Basically the custom SMT specifically checks (for the field specified) for values that match the value for date passed in the `java.time` representation, and if that value does not corresponds to the representation in `java.util`, identifies the discrepancy and "corrects" to the `java.util` representation.
 
 **Note: This SMT class is meant to serve as an example (while still generic enough) that you can adapt to your specific needs in relation to this issue assuming the date that will generate the issue is quite specific. Considering is uncommon in business scenarios to use such old dates it will generally correspond to a default value signalling the field has not in fact been set.**
+
+### Tombstone
+
+Lets register our schema against Schema Registry:
+
+```bash
+jq '. | {schema: tojson}' src/main/resources/avro/customer.avsc | \
+curl -X POST http://localhost:8081/subjects/compacted-value/versions \
+-H "Content-Type: application/vnd.schemaregistry.v1+json" \
+-d @-
+```
+
+Create compacted topic:
+
+```bash
+kafka-topics --bootstrap-server localhost:9092 --topic compacted --create --partitions 1 --replication-factor 1 --config cleanup.policy=compact
+```
+
+Run the class `io.confluent.csta.timestamp.avro.AvroCompactedProducer` and after check the messages:
+
+```bash
+kafka-avro-console-consumer --bootstrap-server localhost:9092 --topic compacted --from-beginning --property schema.registry.url=http://localhost:8081 --property key.deserializer=org.apache.kafka.common.serialization.StringDeserializer --property value.deserializer=io.confluent.kafka.serializers.KafkaAvroDeserializer --property print.key=true --property print.value=true
+```
+
+You should get something like:
+
+```
+Rui	{"first_name":"Rui","last_name":"Fernandes","customer_time":1722331211191656}
+Carmen	{"first_name":"Carmen","last_name":"Monteiro","customer_time":1722331211467569}
+Rui	null
+Carmen	{"first_name":"Carmen","last_name":"Fernandes","customer_time":1722331211467758}
+```
+
+Let's create our table in Postgres:
+
+```sql
+create table compacted (first_name text, last_name text, customer_time timestamp without time zone,PRIMARY KEY(first_name));
+```
+
+If we now create a sink connector:
+
+```bash
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/compacted-sink2/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "compacted",
+          "tasks.max"          : "1",
+          "auto.create"        : "false",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+            "transforms": "timesmod,correctDays",
+            "transforms.timesmod.field": "customer_time",
+            "transforms.timesmod.target.type": "Timestamp",
+            "transforms.timesmod.unix.precision": "microseconds",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.correctDays.field.name": "customer_time",
+            "transforms.correctDays.field.value": "0001-01-01",
+            "transforms.correctDays.type": "io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy$Value"}'
+```
+
+
+
+You will get an error similar to the following related to the tombstone record:
+
+```
+connect  | Caused by: org.apache.kafka.connect.errors.DataException: Only Map objects supported in absence of schema for [Workaround for java.time and java.util representation discrepancy of older dates], found: null
+connect  | 	at org.apache.kafka.connect.transforms.util.Requirements.requireMap(Requirements.java:38)
+connect  | 	at io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy.applySchemaless(CorrectTimeUtilDiscrepancy.java:92)
+connect  | 	at io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy.apply(CorrectTimeUtilDiscrepancy.java:85)
+connect  | 	at org.apache.kafka.connect.runtime.TransformationStage.apply(TransformationStage.java:57)
+connect  | 	at org.apache.kafka.connect.runtime.TransformationChain.lambda$apply$0(TransformationChain.java:54)
+connect  | 	at org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator.execAndRetry(RetryWithToleranceOperator.java:180)
+connect  | 	at org.apache.kafka.connect.runtime.errors.RetryWithToleranceOperator.execAndHandleError(RetryWithToleranceOperator.java:214)
+connect  | 	... 15 more
+```
+
+This error is not specific of our custom SMT and will happen with other SMTs as well. The root cause is the second tombstone entry for Rui.
+
+We want to use predicates to filter the execution of SMT for the records we are interested in. Also setting delete.enabled to true, insert.mode to upsert, and the pk details.
+
+```bash
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/compacted-sink2/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "compacted",
+          "tasks.max"          : "1",
+          "auto.create"        : "false",
+          "auto.evolve"        : "true",
+          "delete.enabled"     : "true",
+          "insert.mode"        : "upsert",
+          "pk.mode"            : "record_key",
+          "pk.fields"          : "first_name",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+            "transforms": "timesmod,correctDays",
+            "transforms.timesmod.field": "customer_time",
+            "transforms.timesmod.target.type": "Timestamp",
+            "transforms.timesmod.unix.precision": "microseconds",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.correctDays.field.name": "customer_time",
+            "transforms.correctDays.field.value": "0001-01-01",
+            "transforms.correctDays.type": "io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy$Value",
+            "transforms.correctDays.predicate": "isNullRecord",
+            "transforms.correctDays.negate"   : "true",
+            "predicates"                          : "isNullRecord",
+            "predicates.isNullRecord.type"        : "org.apache.kafka.connect.transforms.predicates.RecordIsTombstone"}'
+```
+
+You should get at the end on the database table:
+
+```sql
+select * from compacted;
+```
+
+And we get the last update for the Carmen entry for the table:
+
+```
+"Carmen"	"Fernandes"	"2024-07-30 09:20:11.467"
+```
 
 ## Cleanup
 
