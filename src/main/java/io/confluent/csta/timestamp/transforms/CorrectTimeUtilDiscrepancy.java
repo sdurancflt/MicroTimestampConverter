@@ -113,11 +113,8 @@ public abstract class CorrectTimeUtilDiscrepancy<R extends ConnectRecord<R>> imp
     private R applyWithSchema(R record) {
         final Struct value = requireStruct(operatingValue(record), PURPOSE);
         logger.debug("Original Record: " + record.toString());
-        Schema updatedSchema = schemaUpdateCache.get(value.schema());
-        if(updatedSchema == null) {
-            updatedSchema = makeUpdatedSchema(value.schema());
-            schemaUpdateCache.put(value.schema(), updatedSchema);
-        }
+        Schema updatedSchema = value.schema();
+
         logger.debug( "New updated Schema " + updatedSchema.fields().toString());
         final Struct updatedValue = new Struct(updatedSchema);
 
