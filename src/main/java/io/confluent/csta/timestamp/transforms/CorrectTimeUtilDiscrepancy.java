@@ -10,6 +10,7 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 
+import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.transforms.Transformation;
 import org.apache.kafka.connect.transforms.util.SchemaUtil;
 import org.apache.kafka.connect.transforms.util.SimpleConfig;
@@ -114,19 +115,28 @@ public abstract class CorrectTimeUtilDiscrepancy<R extends ConnectRecord<R>> imp
         final Struct value = requireStruct(operatingValue(record), PURPOSE);
         logger.debug("Original Record: " + record.toString());
         Schema updatedSchema = value.schema();
-
         logger.debug( "New updated Schema " + updatedSchema.fields().toString());
-        final Struct updatedValue = new Struct(updatedSchema);
 
-        for (Field field : value.schema().fields()) {
-            updatedValue.put(field.name(), value.get(field));
+        try {
+
+            final Struct updatedValue = new Struct(updatedSchema);
+            for (Field field : value.schema().fields()) {
+                updatedValue.put(field.name(), value.get(field));
+            }
+
+            if (isProblematic(value.get(fieldName))) {
+                updatedValue.put(fieldName, correctedDate);
+            }
+
+
+            return newRecord(record, updatedSchema, updatedValue);
+
         }
+       catch (DataException e){
+           logger.error("Error working  with Record: " + value.toString());
+           throw e;
+       }
 
-        if (isProblematic(value.get(fieldName))) {
-            updatedValue.put(fieldName, correctedDate);
-        }
-
-        return newRecord(record, updatedSchema, updatedValue);
     }
 
     @Override
